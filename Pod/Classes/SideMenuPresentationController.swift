@@ -28,16 +28,16 @@ internal protocol SideMenuPresentationControllerDelegate: class {
 internal final class SideMenuPresentationController {
 
     private let config: PresentationModel
-    private weak var containerView: UIView?
+    private unowned var containerView: UIView
     private var interactivePopGestureRecognizerEnabled: Bool?
     private var clipsToBounds: Bool?
     private let leftSide: Bool
-    private weak var presentedViewController: UIViewController?
-    private weak var presentingViewController: UIViewController?
+    private unowned var presentedViewController: UIViewController
+    private unowned var presentingViewController: UIViewController
 
     private lazy var snapshotView: UIView? = {
         guard config.presentingViewControllerUseSnapshot,
-            let view = presentingViewController?.view.snapshotView(afterScreenUpdates: true) else {
+            let view = presentingViewController.view.snapshotView(afterScreenUpdates: true) else {
                 return nil
         }
 
@@ -46,9 +46,10 @@ internal final class SideMenuPresentationController {
     }()
 
     private lazy var statusBarView: UIView? = {
-        guard config.statusBarEndAlpha > .leastNonzeroMagnitude else { return nil }
-
+        guard config.statusBarEndAlpha != 0 else { return nil }
+        
         return UIView {
+            $0.isHidden = true
             $0.backgroundColor = config.presentationStyle.backgroundColor
             $0.autoresizingMask = [.flexibleHeight, .flexibleWidth]
             $0.isUserInteractionEnabled = false
@@ -64,7 +65,7 @@ internal final class SideMenuPresentationController {
     }
 
     deinit {
-        guard presentedViewController?.isHidden == false else { return }
+        guard !presentedViewController.isHidden else { return }
 
         // Presentations must be reversed to preserve user experience
         dismissalTransitionWillBegin()
@@ -73,11 +74,6 @@ internal final class SideMenuPresentationController {
     }
     
     func containerViewWillLayoutSubviews() {
-        guard let containerView = containerView,
-            let presentedViewController = presentedViewController,
-            let presentingViewController = presentingViewController
-            else { return }
-
         presentedViewController.view.untransform {
             presentedViewController.view.frame = frameOfPresentedViewInContainerView
         }
@@ -94,11 +90,6 @@ internal final class SideMenuPresentationController {
     }
     
     func presentationTransitionWillBegin() {
-        guard let containerView = containerView,
-            let presentedViewController = presentedViewController,
-            let presentingViewController = presentingViewController
-            else { return }
-
         if let snapshotView = snapshotView {
             presentingViewController.view.addSubview(snapshotView)
         }
@@ -117,10 +108,6 @@ internal final class SideMenuPresentationController {
     }
 
     func presentationTransition() {
-        guard let presentedViewController = presentedViewController,
-            let presentingViewController = presentingViewController
-            else { return }
-
         transition(
             to: presentedViewController,
             from: presentingViewController,
@@ -140,14 +127,10 @@ internal final class SideMenuPresentationController {
             return
         }
 
-        guard let presentedViewController = presentedViewController,
-            let presentingViewController = presentingViewController
-            else { return }
-
         addParallax(to: presentingViewController.view)
         
         if let topNavigationController = presentingViewController as? UINavigationController {
-            interactivePopGestureRecognizerEnabled = interactivePopGestureRecognizerEnabled ?? topNavigationController.interactivePopGestureRecognizer?.isEnabled
+            interactivePopGestureRecognizerEnabled = topNavigationController.interactivePopGestureRecognizer?.isEnabled
             topNavigationController.interactivePopGestureRecognizer?.isEnabled = false
         }
 
@@ -158,19 +141,10 @@ internal final class SideMenuPresentationController {
     func dismissalTransitionWillBegin() {
         snapshotView?.removeFromSuperview()
         presentationTransition()
-
-        guard let presentedViewController = presentedViewController,
-            let presentingViewController = presentingViewController
-            else { return }
-
         config.presentationStyle.dismissalTransitionWillBegin(to: presentedViewController, from: presentingViewController)
     }
 
     func dismissalTransition() {
-        guard let presentedViewController = presentedViewController,
-            let presentingViewController = presentingViewController
-            else { return }
-
         transition(
             to: presentingViewController,
             from: presentedViewController,
@@ -185,18 +159,15 @@ internal final class SideMenuPresentationController {
 
     func dismissalTransitionDidEnd(_ completed: Bool) {
         guard completed else {
-            if let snapshotView = snapshotView, let presentingViewController = presentingViewController {
+            if let snapshotView = snapshotView {
                 presentingViewController.view.addSubview(snapshotView)
             }
             presentationTransitionDidEnd(!completed)
             return
         }
 
-        guard let presentedViewController = presentedViewController,
-            let presentingViewController = presentingViewController
-            else { return }
-
         statusBarView?.removeFromSuperview()
+
         removeStyles(from: presentingViewController.containerViewController.view)
         
         if let interactivePopGestureRecognizerEnabled = interactivePopGestureRecognizerEnabled,
@@ -213,14 +184,13 @@ private extension SideMenuPresentationController {
 
     var statusBarFrame: CGRect {
         if #available(iOS 13.0, *) {
-            return containerView?.window?.windowScene?.statusBarManager?.statusBarFrame ?? .zero
+            return containerView.window?.windowScene?.statusBarManager?.statusBarFrame ?? .zero
         } else {
             return UIApplication.shared.statusBarFrame
         }
     }
 
     var frameOfPresentedViewInContainerView: CGRect {
-        guard let containerView = containerView else { return .zero }
         var rect = containerView.bounds
         rect.origin.x = leftSide ? 0 : rect.width - config.menuWidth
         rect.size.width = config.menuWidth
@@ -228,7 +198,6 @@ private extension SideMenuPresentationController {
     }
 
     var frameOfPresentingViewInContainerView: CGRect {
-        guard let containerView = containerView else { return .zero }
         var rect = containerView.frame
         if containerView.superview != nil, containerView.frame.minY > .ulpOfOne {
             let statusBarOffset = statusBarFrame.height - rect.minY
@@ -255,10 +224,6 @@ private extension SideMenuPresentationController {
     }
 
     func layerViews() {
-        guard let presentedViewController = presentedViewController,
-            let presentingViewController = presentingViewController
-            else { return }
-
         statusBarView?.layer.zPosition = 2
 
         if config.presentationStyle.menuOnTop {
